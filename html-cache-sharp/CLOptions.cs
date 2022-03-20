@@ -14,7 +14,7 @@ namespace HtmlCache
         [Option(shortName: 'с', longName: "config-path", Required = false, HelpText = "Path to config", Default = ".")]
         public string? ConfigPath { get; set; }
 
-        [Usage(ApplicationAlias = "bs-deploy")]
+        [Usage(ApplicationAlias = "html-cache-sharp")]
         public static IEnumerable<Example> Examples => new List<Example>() {
             new Example("Cache html pages by config in `/var/www/htdocs/skin-expert`", new CLOptions { ConfigPath = "/var/www/htdocs/skin-expert" })
         };
