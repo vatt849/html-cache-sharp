@@ -1,0 +1,11 @@
+﻿db_driver: mongodb #db driver: mongo/redis
+db: #db section
+    host: localhost #db server host
+    port: 27017 #db server port
+    user: "" #db server auth username
+    passwd: "" #db server auth password
+    db: project_db #db name used for cache saving
+base_uri: https://example.com #base url of project
+page_types: #page types section
+  - type: home #page type name
+    regex: \.(ru|com)\/?$ #page type regex
