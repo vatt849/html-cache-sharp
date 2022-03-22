@@ -47,8 +47,11 @@ namespace HtmlCache.Process
                 page.Load += new EventHandler((sender, e) => Console.WriteLine($">>>> {((Page)sender).Url} loaded!"));
             }
 
+            TimeSpan totalTime = new();
+
             foreach (var url in UrlSet)
             {
+                var pageTimeStart = DateTime.Now;
                 progress++;
 
                 string currentPageType = pageTypes
@@ -71,6 +74,10 @@ namespace HtmlCache.Process
                     if (render.LastmodDate == url.LastMod)
                     {
                         Console.WriteLine($">>>> Render lastmod date not changed - SKIP");
+
+                        totalTime += DateTime.Now - pageTimeStart;
+
+                        Console.WriteLine($">>>> Render end in {DateTime.Now - pageTimeStart} / {totalTime}");
 
                         Passed++;
 
@@ -119,6 +126,10 @@ namespace HtmlCache.Process
                     {
                         Console.WriteLine($">>>> Render content hash not changed - SKIP");
 
+                        totalTime += DateTime.Now - pageTimeStart;
+
+                        Console.WriteLine($">>>> Render end in {DateTime.Now - pageTimeStart} / {totalTime}");
+
                         Passed++;
 
                         continue;
@@ -142,6 +153,10 @@ namespace HtmlCache.Process
                         throw new Exception("DB saving error");
                     }
 
+                    totalTime += DateTime.Now - pageTimeStart;
+
+                    Console.WriteLine($">>>> Render end in {DateTime.Now - pageTimeStart} / {totalTime}");
+
                     Passed++;
                 }
                 catch (Exception e)
@@ -154,6 +169,11 @@ namespace HtmlCache.Process
 
                     try
                     {
+                        if (!Directory.Exists("./pages"))
+                        {
+                            Directory.CreateDirectory("./pages");
+                        }
+
                         string failScreenPath = $"./pages/fail-{urlHash}.png";
 
                         await page.ScreenshotAsync(failScreenPath, new ScreenshotOptions
@@ -165,9 +185,15 @@ namespace HtmlCache.Process
                     }
                     catch (Exception)
                     {
-                        Console.Write(">> Error occured while capturing screenshot");
+                        Console.WriteLine(">> Error occured while capturing screenshot");
 
                         throw;
+                    }
+                    finally
+                    {
+                        totalTime += DateTime.Now - pageTimeStart;
+
+                        Console.WriteLine($">>>> Render end in {DateTime.Now - pageTimeStart} / {totalTime}");
                     }
                 }
             }
