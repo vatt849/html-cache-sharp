@@ -8,6 +8,9 @@ namespace HtmlCache
         [Option(shortName: 'v', longName: "verbose", Required = false, HelpText = "Verbose output", Default = false)]
         public bool Verbose { get; set; }
 
+        [Option(shortName: 'g', longName: "group-urls", Required = false, HelpText = "Cache urls by group", Default = false)]
+        public bool GroupUrls { get; set; }
+
         [Option(shortName: 'r', longName: "chrome-revision", Required = false, HelpText = "Chrome revision", Default = null)]
         public string? ChromeRevision { get; set; }
 

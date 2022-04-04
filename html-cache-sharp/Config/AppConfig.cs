@@ -1,4 +1,5 @@
-﻿using YamlDotNet.Serialization;
+﻿using PuppeteerSharp;
+using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
 namespace HtmlCache.Config
@@ -17,9 +18,12 @@ namespace HtmlCache.Config
         public string BaseUri { get; set; }
 
         public bool Verbose { get; set; }
+
         public string? BrowserRevision { get; set; }
 
         public int? Timeout { get; set; }
+
+        public Browser? Browser { get; set; }
 
         public static AppConfig Load(string configPath)
         {

@@ -163,5 +163,18 @@ namespace HtmlCache.Process
 
             return Puppeteer.LaunchAsync(new LaunchOptions { Headless = true, ExecutablePath = installedRevision.ExecutablePath });
         }
+
+        public static async Task LaunchBrowser()
+        {
+            AppConfig.Instance.Browser = await GetBrowser();
+        }
+
+        public static async Task CloseBrowser()
+        {
+            if (AppConfig.Instance.Browser != null)
+            {
+                await AppConfig.Instance.Browser.CloseAsync();
+            }
+        }
     }
 }

@@ -5,6 +5,14 @@ using HtmlCache.Config;
 using HtmlCache.Process;
 using Newtonsoft.Json;
 
+Console.CancelKeyPress += async (sender, e) =>
+{
+    Console.WriteLine();
+    Console.WriteLine("Task interrupted. Exit.");
+
+    await BrowserLoader.CloseBrowser();
+};
+
 return await Parser.Default.ParseArguments<CLOptions>(args)
     .MapResult(async (CLOptions opts) =>
     {
@@ -16,7 +24,8 @@ return await Parser.Default.ParseArguments<CLOptions>(args)
 
             string configPath = opts.ConfigPath ?? "";
 
-            Console.WriteLine($"Verbose output: {(opts.Verbose ? "on" : "off")}");
+            Console.WriteLine($"Verbose output: {opts.Verbose}");
+            Console.WriteLine($"Group urls before caching: {opts.GroupUrls}");
 
             Console.WriteLine();
 
@@ -83,11 +92,28 @@ return await Parser.Default.ParseArguments<CLOptions>(args)
 
             Console.WriteLine();
 
+            var browserTimeStart = DateTime.Now;
+            Console.WriteLine("Start browser process...");
+
+            await BrowserLoader.LaunchBrowser();
+
+            Console.WriteLine($"Browser launched successfully ({DateTime.Now - browserTimeStart})");
+
+            Console.WriteLine();
+
             var renderTimeStart = DateTime.Now;
             Console.WriteLine("Start rendering...");
             Renderer render = new(urlset);
 
-            await render.CollectAsync();
+            if (opts.GroupUrls)
+            {
+                await render.CollectGroupedAsync();
+            }
+            else
+            {
+                await render.CollectAsync();
+            }
+
             Console.WriteLine($"Render successfully finished ({DateTime.Now - renderTimeStart}). Urls passed: {render.Passed} of {render.Total}");
 
             Console.WriteLine($"All tasks completed in {DateTime.Now - timeStart}");
