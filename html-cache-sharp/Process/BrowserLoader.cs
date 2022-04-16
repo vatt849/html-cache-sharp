@@ -85,7 +85,7 @@ namespace HtmlCache.Process
                     bytesPerSecond = (int)Math.Round(e.BytesReceived / timeSpan.TotalSeconds, 0);
                 }
 
-                Console.Write($"\r>> Download progress: {e.ProgressPercentage}% [{bytesPerSecond / 1024} KB/s]");
+                Console.Write($"\r>> Download progress: {e.ProgressPercentage}% [{bytesPerSecond / 1024} KB/s]     ");
             };
 
             await browserFetcher.DownloadAsync(actualRevision);
@@ -105,55 +105,57 @@ namespace HtmlCache.Process
 
         public static async Task<Dictionary<Platform, string>> GetActualRevisionsListAsync()
         {
-            HttpClient client = new();
-            var response = await client.GetAsync(new Uri("https://omahaproxy.appspot.com/json?channel=stable"));
-
-
-            Dictionary<Platform, string> revisions = new();
-
-            JArray osVersions = JArray.Parse(await response.Content.ReadAsStringAsync());
-
-            foreach (var osObj in osVersions)
+            Dictionary<Platform, string> revisions = new()
             {
-                var osVersion = (JObject)osObj;
+                { Platform.Win32, BrowserFetcher.DefaultChromiumRevision },
+                { Platform.Win64, BrowserFetcher.DefaultChromiumRevision },
+                { Platform.Linux, BrowserFetcher.DefaultChromiumRevision },
+                { Platform.MacOS, BrowserFetcher.DefaultChromiumRevision },
+                { Platform.Unknown, BrowserFetcher.DefaultChromiumRevision }
+            };
 
-                string os = (string)osVersion["os"] ?? "";
-
-                var actualVer = (JObject?)osVersion["versions"]?.First;
-
-                if (actualVer is null) continue;
-
-                string actualRevision = (string)actualVer["branch_base_position"] ?? BrowserFetcher.DefaultChromiumRevision;
-
-                switch (os)
-                {
-                    case "win":
-                        revisions[Platform.Win32] = actualRevision;
-                        break;
-                    case "win64":
-                        revisions[Platform.Win64] = actualRevision;
-                        break;
-                    case "linux":
-                        revisions[Platform.Linux] = actualRevision;
-                        break;
-                    case "mac":
-                        revisions[Platform.MacOS] = actualRevision;
-                        break;
-                }
+            foreach (var revision in revisions)
+            {
+                revisions[revision.Key] = await GetActualPlatformRevisionAsync(revision.Key);
             }
-
-            revisions[Platform.Unknown] = BrowserFetcher.DefaultChromiumRevision;
 
             return revisions;
         }
 
         public static async Task<string> GetActualRevisionAsync()
         {
-            var revList = await GetActualRevisionsListAsync();
-
             var browserFetcher = new BrowserFetcher();
 
-            return revList[browserFetcher.Platform] ?? BrowserFetcher.DefaultChromiumRevision;
+            return await GetActualPlatformRevisionAsync(browserFetcher.Platform);
+        }
+
+        internal static async Task<string> GetActualPlatformRevisionAsync(Platform platform)
+        {
+            string platformName = platform switch
+            {
+                Platform.Win32 => "Win",
+                Platform.Win64 => "Win_x64",
+                Platform.Linux => "Linux",
+                Platform.MacOS => "Mac",
+                _ => ""
+            };
+
+            if (string.IsNullOrEmpty(platformName))
+            {
+                return BrowserFetcher.DefaultChromiumRevision;
+            }
+
+            HttpClient client = new();
+
+            var revDataResp = await client.GetAsync(new Uri($"https://www.googleapis.com/storage/v1/b/chromium-browser-snapshots/o/{platformName}%2FLAST_CHANGE"));
+
+            JObject revData = JObject.Parse(await revDataResp.Content.ReadAsStringAsync());
+
+            string actualRevisionLink = (string)revData["mediaLink"] ?? "";
+
+            var actualRevResp = await client.GetAsync(new Uri(actualRevisionLink));
+
+            return await actualRevResp.Content.ReadAsStringAsync();
         }
 
         public static Task<Browser> GetBrowser()
