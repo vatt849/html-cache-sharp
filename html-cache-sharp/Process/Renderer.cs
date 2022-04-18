@@ -2,6 +2,7 @@
 using HtmlCache.DB;
 using Newtonsoft.Json;
 using PuppeteerSharp;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -124,6 +125,8 @@ namespace HtmlCache.Process
             //using var browser = await BrowserLoader.GetBrowser();
             _ = await browser.NewPageAsync(); //open default page
 
+            TimeSpan totalTime = new();
+
             foreach (var groupedUrl in groupedUrlSet)
             {
                 var pageType = groupedUrl.Key;
@@ -138,7 +141,7 @@ namespace HtmlCache.Process
                     page.Load += new EventHandler((sender, e) => Console.WriteLine($">>>> {((Page)sender).Url} loaded!"));
                 }
 
-                TimeSpan totalTime = new();
+                TimeSpan groupTime = new();
 
                 int progress = 0;
 
@@ -148,12 +151,13 @@ namespace HtmlCache.Process
 
                     TimeSpan pageTiming = new();
 
-                    Console.WriteLine($">> [{progress} of {Total}][{pageType}] Process page {url.Uri}...");
+                    Console.WriteLine($">> [{progress} of {urlList.Count}][{pageType}] Process page {url.Uri}...");
 
                     try
                     {
                         pageTiming = await CollectCacheAsync(url, pageType, page);
 
+                        groupTime += pageTiming;
                         totalTime += pageTiming;
                     }
                     catch (Exception ex)
@@ -161,7 +165,7 @@ namespace HtmlCache.Process
                         Console.WriteLine("[!] Error occured: " + ex.ToString());
                     }
 
-                    Console.WriteLine($">>>> Render end in {pageTiming} / {totalTime}");
+                    Console.WriteLine($">>>> Render end in {pageTiming} / {groupTime} ({totalTime})");
                 }
 
                 await page.CloseAsync();
@@ -208,11 +212,27 @@ namespace HtmlCache.Process
             {
                 string prerenderUrl = url.Uri.Contains('?') ? $"{url.Uri}&is_prerender=1" : $"{url.Uri}?is_prerender=1";
 
-                await page.GoToAsync(prerenderUrl, new NavigationOptions
+                var pageResponse = await page.GoToAsync(prerenderUrl, new NavigationOptions
                 {
                     Timeout = AppConfig.Instance.Timeout ?? 60000,
                     WaitUntil = new[] { WaitUntilNavigation.Load }
                 });
+
+                if (pageResponse.Status == HttpStatusCode.NotFound)
+                {
+                    throw new Exception("Page not found");
+                }
+
+                string pageContent = await page.GetContentAsync();
+
+                if (pageContent.Contains("<meta name=\"robots\" content=\"noindex\">"))
+                {
+                    Console.WriteLine(">>>> NOINDEX meta attribute detected - SKIP");
+
+                    Passed++;
+
+                    return DateTime.Now - pageTimeStart;
+                }
 
                 if (verbose)
                 {
@@ -243,7 +263,7 @@ namespace HtmlCache.Process
 
                 if (render != null && render.ContentHash == contentHash)
                 {
-                    Console.WriteLine($">>>> Render content hash not changed - SKIP");
+                    Console.WriteLine(">>>> Render content hash not changed - SKIP");
 
                     Passed++;
 
