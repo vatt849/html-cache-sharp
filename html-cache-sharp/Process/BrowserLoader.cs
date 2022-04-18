@@ -133,8 +133,8 @@ namespace HtmlCache.Process
         {
             string platformName = platform switch
             {
-                Platform.Win32 => "Win",
-                Platform.Win64 => "Win_x64",
+                Platform.Win32 => "Win32",
+                Platform.Win64 => "Windows",
                 Platform.Linux => "Linux",
                 Platform.MacOS => "Mac",
                 _ => ""
@@ -147,15 +147,13 @@ namespace HtmlCache.Process
 
             HttpClient client = new();
 
-            var revDataResp = await client.GetAsync(new Uri($"https://www.googleapis.com/storage/v1/b/chromium-browser-snapshots/o/{platformName}%2FLAST_CHANGE"));
+            var revDataResp = await client.GetAsync(new Uri($"https://chromiumdash.appspot.com/fetch_releases?channel=Stable&num=1&platform={platformName}"));
 
-            JObject revData = JObject.Parse(await revDataResp.Content.ReadAsStringAsync());
+            JArray revDataList = JArray.Parse(await revDataResp.Content.ReadAsStringAsync());
 
-            string actualRevisionLink = (string)revData["mediaLink"] ?? "";
+            JObject revData = (JObject)revDataList[0] ?? new();
 
-            var actualRevResp = await client.GetAsync(new Uri(actualRevisionLink));
-
-            return await actualRevResp.Content.ReadAsStringAsync();
+            return (string)revData["chromium_main_branch_position"] ?? "";
         }
 
         public static Task<Browser> GetBrowser()
