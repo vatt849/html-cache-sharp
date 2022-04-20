@@ -7,7 +7,7 @@ namespace HtmlCache.Process
 {
     internal static class BrowserLoader
     {
-        public async static Task CheckRevision()
+        public async static Task CheckRevisionAsync()
         {
             string? manualRevision = AppConfig.Instance.BrowserRevision;
 
@@ -156,20 +156,47 @@ namespace HtmlCache.Process
             return (string)revData["chromium_main_branch_position"] ?? "";
         }
 
-        public static Task<Browser> GetBrowser()
+        public static Task<Browser> GetBrowserAsync()
         {
             var browserFetcher = new BrowserFetcher();
             var installedRevision = browserFetcher.RevisionInfo(AppConfig.Instance.BrowserRevision);
 
-            return Puppeteer.LaunchAsync(new LaunchOptions { Headless = true, ExecutablePath = installedRevision.ExecutablePath });
+            return Puppeteer.LaunchAsync(new LaunchOptions
+            {
+                Headless = true,
+                ExecutablePath = installedRevision.ExecutablePath,
+                DefaultViewport = new()
+                {
+                    Width = 1920,
+                    Height = 1080
+                }
+            });
         }
 
-        public static async Task LaunchBrowser()
+        public static async Task LaunchBrowserAsync()
         {
-            AppConfig.Instance.Browser = await GetBrowser();
+            AppConfig.Instance.Browser = await GetBrowserAsync();
         }
 
-        public static async Task CloseBrowser()
+        public static async Task<Page> OpenNewPageAsync()
+        {
+            var browser = AppConfig.Instance.Browser;
+            if (browser is null)
+            {
+                throw new Exception("Browser not launched");
+            }
+
+            var page = await browser.NewPageAsync();
+
+            if (AppConfig.Instance.Verbose)
+            {
+                page.Load += new EventHandler((sender, e) => Console.WriteLine($">>>> {((Page)sender).Url} loaded!"));
+            }
+
+            return page;
+        }
+
+        public static async Task CloseBrowserAsync()
         {
             if (AppConfig.Instance.Browser != null)
             {

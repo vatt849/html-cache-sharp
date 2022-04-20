@@ -19,6 +19,8 @@ namespace HtmlCache.Config
 
         public bool Verbose { get; set; }
 
+        public bool Multithread { get; set; }
+
         public string? BrowserRevision { get; set; }
 
         public int? Timeout { get; set; }

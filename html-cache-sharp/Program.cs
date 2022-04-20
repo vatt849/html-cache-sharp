@@ -10,7 +10,7 @@ Console.CancelKeyPress += async (sender, e) =>
     Console.WriteLine();
     Console.WriteLine("Task interrupted. Exit.");
 
-    await BrowserLoader.CloseBrowser();
+    await BrowserLoader.CloseBrowserAsync();
 };
 
 return await Parser.Default.ParseArguments<CLOptions>(args)
@@ -18,6 +18,8 @@ return await Parser.Default.ParseArguments<CLOptions>(args)
     {
         try
         {
+            var timeStart = DateTime.Now;
+
             Console.WriteLine($"BS HtmlCache started at {DateTime.Now:yyy-MM-dd HH:mm:ss}");
 
             Console.WriteLine();
@@ -26,6 +28,7 @@ return await Parser.Default.ParseArguments<CLOptions>(args)
 
             Console.WriteLine($"Verbose output: {opts.Verbose}");
             Console.WriteLine($"Group urls before caching: {opts.GroupUrls}");
+            Console.WriteLine($"Multithread mode: {opts.Multithread}");
 
             Console.WriteLine();
 
@@ -56,6 +59,7 @@ return await Parser.Default.ParseArguments<CLOptions>(args)
 
             AppConfig.Load(configPath);
             AppConfig.Instance.Verbose = opts.Verbose;
+            AppConfig.Instance.Multithread = opts.Multithread;
 
             Console.WriteLine($"Config parsed successfully ({DateTime.Now - configTimeStart})");
 
@@ -69,7 +73,7 @@ return await Parser.Default.ParseArguments<CLOptions>(args)
                 AppConfig.Instance.BrowserRevision = opts.ChromeRevision;
             }
 
-            await BrowserLoader.CheckRevision();
+            await BrowserLoader.CheckRevisionAsync();
 
             Console.WriteLine($"Checking browser revision done ({DateTime.Now - revisionTimeStart})");
 
@@ -78,8 +82,6 @@ return await Parser.Default.ParseArguments<CLOptions>(args)
                 Console.WriteLine();
                 Console.WriteLine($"App config:\n{JsonConvert.SerializeObject(AppConfig.Instance, Formatting.Indented)}");
             }
-
-            var timeStart = DateTime.Now;
 
             Console.WriteLine();
 
@@ -95,7 +97,7 @@ return await Parser.Default.ParseArguments<CLOptions>(args)
             var browserTimeStart = DateTime.Now;
             Console.WriteLine("Start browser process...");
 
-            await BrowserLoader.LaunchBrowser();
+            await BrowserLoader.LaunchBrowserAsync();
 
             Console.WriteLine($"Browser launched successfully ({DateTime.Now - browserTimeStart})");
 

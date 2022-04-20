@@ -25,6 +25,7 @@ namespace HtmlCache.Process
             {
                 "redis" => new Redis(),
                 "mongodb" => new Mongo(),
+                "mysql" => new Mysql(),
                 _ => throw new Exception($"DB driver not recognized by identifier `{dbDriver}`"),
             };
 
@@ -34,53 +35,7 @@ namespace HtmlCache.Process
 
         public async Task CollectAsync()
         {
-            bool verbose = AppConfig.Instance.Verbose;
-            var pageTypes = AppConfig.Instance.PageTypes ?? new();
-
-            using var browser = AppConfig.Instance.Browser;
-            if (browser == null)
-            {
-                throw new Exception("Browser not launched");
-            }
-            //using var browser = await BrowserLoader.GetBrowser();
-
-            int progress = 0;
-
-            using var page = await browser.NewPageAsync();
-
-            if (verbose)
-            {
-                page.Load += new EventHandler((sender, e) => Console.WriteLine($">>>> {((Page)sender).Url} loaded!"));
-            }
-
-            TimeSpan totalTime = new();
-
-            foreach (var url in UrlSet)
-            {
-                progress++;
-
-                TimeSpan pageTiming = new();
-
-                string currentPageType = pageTypes
-                    .Where(pt => Regex.IsMatch(url.Uri, pt.Regex, RegexOptions.IgnoreCase))
-                    .Select(pt => pt.Type)
-                    .FirstOrDefault("undefined");
-
-                Console.WriteLine($">> [{progress} of {Total}][{currentPageType}] Process page {url.Uri}...");
-
-                try
-                {
-                    pageTiming = await CollectCacheAsync(url, currentPageType, page);
-
-                    totalTime += pageTiming;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("[!] Error occured: " + ex.ToString());
-                }
-
-                Console.WriteLine($">>>> Render end in {pageTiming} / {totalTime}");
-            }
+            await IterateUrlsAsync();
         }
 
         public async Task CollectGroupedAsync()
@@ -116,15 +71,6 @@ namespace HtmlCache.Process
 
             Console.WriteLine(">> Start collect cache for urls by detected groups");
 
-
-            using var browser = AppConfig.Instance.Browser;
-            if (browser == null)
-            {
-                throw new Exception("Browser not launched");
-            }
-            //using var browser = await BrowserLoader.GetBrowser();
-            _ = await browser.NewPageAsync(); //open default page
-
             TimeSpan totalTime = new();
 
             foreach (var groupedUrl in groupedUrlSet)
@@ -134,30 +80,90 @@ namespace HtmlCache.Process
 
                 Console.WriteLine($">> Collect cache for type `{pageType}`:");
 
-                using var page = await browser.NewPageAsync();
+                totalTime += await IterateUrlsAsync(urlList, totalTime);
+            }
+        }
 
-                if (verbose)
+        internal async Task<TimeSpan> IterateUrlsAsync(List<Url>? urlSet = null, TimeSpan? offsetTime = null)
+        {
+            bool multithread = AppConfig.Instance.Multithread;
+            bool verbose = AppConfig.Instance.Verbose;
+
+            _ = await BrowserLoader.OpenNewPageAsync(); //open default page
+
+            if (urlSet == null)
+            {
+                urlSet = UrlSet;
+            }
+
+            var pageTypes = AppConfig.Instance.PageTypes ?? new();
+
+            TimeSpan totalTime = new();
+            int current = 0;
+
+            int totalUrls = urlSet.Count;
+
+            if (multithread)
+            {
+                Console.WriteLine($">> Start iterating over url list in parallel mode");
+
+                await Parallel.ForEachAsync(urlSet, async (url, state) =>
                 {
-                    page.Load += new EventHandler((sender, e) => Console.WriteLine($">>>> {((Page)sender).Url} loaded!"));
-                }
+                    using var page = await BrowserLoader.OpenNewPageAsync();
 
-                TimeSpan groupTime = new();
+                    current++;
 
-                int progress = 0;
-
-                foreach (var url in urlList)
-                {
-                    progress++;
+                    int cursor = current;
+                    int currentThread = Environment.CurrentManagedThreadId;
 
                     TimeSpan pageTiming = new();
 
-                    Console.WriteLine($">> [{progress} of {urlList.Count}][{pageType}] Process page {url.Uri}...");
+                    string currentPageType = pageTypes
+                        .Where(pt => Regex.IsMatch(url.Uri, pt.Regex, RegexOptions.IgnoreCase))
+                        .Select(pt => pt.Type)
+                        .FirstOrDefault("undefined");
+
+                    Console.WriteLine($">> [th#{currentThread}][{cursor} of {totalUrls}][{currentPageType}] Process page {url.Uri}...");
 
                     try
                     {
-                        pageTiming = await CollectCacheAsync(url, pageType, page);
+                        pageTiming = await CollectCacheAsync(url, currentPageType, page);
 
-                        groupTime += pageTiming;
+                        totalTime += pageTiming;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[th#{currentThread}][!] Error occured: " + ex.ToString());
+                    }
+
+                    Console.WriteLine($">>>> [th#{currentThread}][{cursor} of {totalUrls}] Render end in {pageTiming} / {totalTime}{(offsetTime is null ? "" : $" ({offsetTime + totalTime})")}");
+
+                    await page.CloseAsync();
+                });
+            }
+            else
+            {
+                Console.WriteLine(">> Start iterating over url list in sequential mode");
+
+                var page = await BrowserLoader.OpenNewPageAsync();
+
+                foreach (var url in urlSet)
+                {
+                    current++;
+
+                    TimeSpan pageTiming = new();
+
+                    string currentPageType = pageTypes
+                        .Where(pt => Regex.IsMatch(url.Uri, pt.Regex, RegexOptions.IgnoreCase))
+                        .Select(pt => pt.Type)
+                        .FirstOrDefault("undefined");
+
+                    Console.WriteLine($">> [{current} of {totalUrls}][{currentPageType}] Process page {url.Uri}...");
+
+                    try
+                    {
+                        pageTiming = await CollectCacheAsync(url, currentPageType, page);
+
                         totalTime += pageTiming;
                     }
                     catch (Exception ex)
@@ -165,11 +171,13 @@ namespace HtmlCache.Process
                         Console.WriteLine("[!] Error occured: " + ex.ToString());
                     }
 
-                    Console.WriteLine($">>>> Render end in {pageTiming} / {groupTime} ({totalTime})");
+                    Console.WriteLine($">>>> Render end in {pageTiming} / {totalTime}{(offsetTime is null ? "" : $" ({offsetTime + totalTime})")}");
                 }
 
                 await page.CloseAsync();
             }
+
+            return (TimeSpan)(offsetTime is null ? totalTime : offsetTime + totalTime);
         }
 
         internal async Task<TimeSpan> CollectCacheAsync(Url url, string pageType = "undefined", Page? page = null, Browser? browser = null)
@@ -185,7 +193,7 @@ namespace HtmlCache.Process
                     throw new ArgumentNullException(nameof(browser));
                 }
 
-                page = await browser.NewPageAsync();
+                page = await BrowserLoader.OpenNewPageAsync();
             }
 
             string urlHash = Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(url.Uri))).ToLower();

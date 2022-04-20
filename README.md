@@ -7,7 +7,7 @@ HTML cache (prerender) app for Bolt System projects
 - sample usage:
 
 ```bash
-html-cache-sharp
+html-cache-sharp [-v|--verbose] [-c <file>|--config-path=<file>] [-r <revision>|--chrome-revision=<revision>] [-m|--multithread]
 ```
 
 - verbose output:
@@ -29,6 +29,13 @@ html-cache-sharp -c /path/to/config.yml
 ```bash
 html-cache-sharp --chrome-revision=972766
 html-cache-sharp -r 972766
+```
+
+- enable multithreaded caching mode:
+
+```bash
+html-cache-sharp --multithread
+html-cache-sharp -m
 ```
 
 ## Config examples

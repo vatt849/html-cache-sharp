@@ -11,6 +11,9 @@ namespace HtmlCache
         [Option(shortName: 'g', longName: "group-urls", Required = false, HelpText = "Cache urls by group", Default = false)]
         public bool GroupUrls { get; set; }
 
+        [Option(shortName: 'm', longName: "multithread", Required = false, HelpText = "Run in multithread mode", Default = false)]
+        public bool Multithread { get; set; }
+
         [Option(shortName: 'r', longName: "chrome-revision", Required = false, HelpText = "Chrome revision", Default = null)]
         public string? ChromeRevision { get; set; }
 
