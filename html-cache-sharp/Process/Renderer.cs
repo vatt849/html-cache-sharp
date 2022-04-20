@@ -107,6 +107,8 @@ namespace HtmlCache.Process
             {
                 Console.WriteLine($">> Start iterating over url list in parallel mode");
 
+                var timeStart = DateTime.Now;
+
                 await Parallel.ForEachAsync(urlSet, async (url, state) =>
                 {
                     using var page = await BrowserLoader.OpenNewPageAsync();
@@ -129,7 +131,7 @@ namespace HtmlCache.Process
                     {
                         pageTiming = await CollectCacheAsync(url, currentPageType, page);
 
-                        totalTime += pageTiming;
+                        totalTime = DateTime.Now - timeStart;
                     }
                     catch (Exception ex)
                     {
