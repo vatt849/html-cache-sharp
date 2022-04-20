@@ -1,10 +1,12 @@
-﻿db_driver: mongodb #db driver: mongo/redis
+﻿db_driver: mongodb #db driver: mongo/redis/mysql
 db: #db section
     host: localhost #db server host
-    port: 27017 #db server port
+    port: 27017 #db server port (default: 27017 for mongo, 6379 for redis, 3306 for mysql)
     user: "" #db server auth username
     passwd: "" #db server auth password
     db: project_db #db name used for cache saving
+    collection: renders #mongodb collection name (optional, "renders" by default)
+    table: renders #mysql table name (optional, "renders" by default)
 base_uri: https://example.com #base url of project
 page_types: #page types section
   - type: home #page type name

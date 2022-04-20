@@ -11,6 +11,7 @@ namespace HtmlCache.DB
         internal IMongoDatabase db;
         internal IMongoCollection<BsonDocument> collection;
 
+        const int PORT = 27017;
         const string COLLECTION_NAME = "renders";
 
         public Mongo()
@@ -19,25 +20,28 @@ namespace HtmlCache.DB
 
             var dbConfig = AppConfig.Instance.Db;
 
+            string collectionName = !string.IsNullOrEmpty(dbConfig.Collection) ? dbConfig.Collection : COLLECTION_NAME;
+            int dbPort = (int)(dbConfig.Port != null ? dbConfig.Port : PORT);
+
             string authPart = !string.IsNullOrEmpty(dbConfig.User) && !string.IsNullOrEmpty(dbConfig.Passwd) ? $"{dbConfig.User}:{dbConfig.Passwd}@" : "";
-            string connStr = $"mongodb://{authPart}{dbConfig.Host}:{dbConfig.Port}/{dbConfig.Db}{(!string.IsNullOrEmpty(authPart) ? "?authSource=admin" : "")}";
+            string connStr = $"mongodb://{authPart}{dbConfig.Host}:{dbPort}/{dbConfig.Db}{(!string.IsNullOrEmpty(authPart) ? "?authSource=admin" : "")}";
 
             string maskedAuthPart = !string.IsNullOrEmpty(dbConfig.User) && !string.IsNullOrEmpty(dbConfig.Passwd) ? $"{dbConfig.User}:{{PWD: {dbConfig.Passwd.Length} symbols}}@" : "";
-            string maskedConnStr = $"mongodb://{maskedAuthPart}{dbConfig.Host}:{dbConfig.Port}/{dbConfig.Db}{(!string.IsNullOrEmpty(maskedAuthPart) ? "?authSource=admin" : "")}";
+            string maskedConnStr = $"mongodb://{maskedAuthPart}{dbConfig.Host}:{dbPort}/{dbConfig.Db}{(!string.IsNullOrEmpty(maskedAuthPart) ? "?authSource=admin" : "")}";
 
             dbClient = new(connStr);
 
             db = dbClient.GetDatabase(dbConfig.Db);
 
-            var filter = new BsonDocument("name", COLLECTION_NAME);
+            var filter = new BsonDocument("name", collectionName);
             var options = new ListCollectionNamesOptions { Filter = filter };
 
             if (!db.ListCollectionNames(options).Any())
             {
-                db.CreateCollection(COLLECTION_NAME);
+                db.CreateCollection(collectionName);
             }
 
-            collection = db.GetCollection<BsonDocument>(COLLECTION_NAME);
+            collection = db.GetCollection<BsonDocument>(collectionName);
 
             Console.WriteLine($">> Connect to MongoDB successfully initiated [{maskedConnStr}]");
 
