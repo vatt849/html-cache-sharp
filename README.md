@@ -27,8 +27,8 @@ html-cache-sharp -c /path/to/config.yml
 - with chrome revision:
 
 ```bash
-html-cache-sharp --chrome-revision=961656
-html-cache-sharp -r 961656
+html-cache-sharp --chrome-revision=972766
+html-cache-sharp -r 972766
 ```
 
 ## Config examples
@@ -43,6 +43,7 @@ db:
     user: ""
     passwd: ""
     db: project_db
+    collection: renders
 base_uri: https://example.com
 page_types:
   - type: home
@@ -59,6 +60,23 @@ db:
     user: ""
     passwd: ""
     db: 4
+base_uri: https://example.com
+page_types:
+  - type: home
+    regex: \.(ru|com)\/?$
+```
+
+- with Redis:
+
+```yml
+db_driver: redis
+db:
+    host: localhost
+    port: 6379
+    user: ""
+    passwd: ""
+    db: db_name
+    table: renders
 base_uri: https://example.com
 page_types:
   - type: home
