@@ -1,10 +1,13 @@
 ﻿using HtmlCache.Config;
+using log4net;
 using MySql.Data.MySqlClient;
 
 namespace HtmlCache.DB
 {
     internal class Mysql : IDB
     {
+        private static readonly ILog log = LogManager.GetLogger(typeof(Mysql));
+
         internal MySqlConnection dbClient;
         internal string tableName;
 
@@ -13,8 +16,6 @@ namespace HtmlCache.DB
 
         public Mysql()
         {
-            var verbose = AppConfig.Instance.Verbose;
-
             var dbConfig = AppConfig.Instance.Db;
 
             tableName = !string.IsNullOrEmpty(dbConfig.Table) ? dbConfig.Table : TABLE_NAME;
@@ -45,7 +46,7 @@ namespace HtmlCache.DB
                 throw new Exception($"Unable to connect to MySQL db by connection string `{maskedConnStr}`");
             }
 
-            Console.WriteLine($">> Connect to Mysql successfully initiated [{maskedConnStr}]");
+            log.Info($"Connect to Mysql successfully initiated [{maskedConnStr}]");
 
             var commandTableCheck = dbClient.CreateCommand();
             commandTableCheck.CommandText = $"SHOW TABLES LIKE '{tableName}'";
@@ -54,7 +55,7 @@ namespace HtmlCache.DB
 
             if (tableCheck == null)
             {
-                Console.WriteLine($">> Table `{tableName}` not found in DB. Create new one");
+                log.Info($"Table `{tableName}` not found in DB. Create new one");
 
                 var commandTableCreate = dbClient.CreateCommand();
                 commandTableCreate.CommandText = $@"
@@ -133,10 +134,12 @@ namespace HtmlCache.DB
             fieldNames.Add("`content`");
             fieldValues.Add("?content");
 
-            var contentData = new MySqlParameter();
-            contentData.ParameterName = "?content";
-            contentData.MySqlDbType = MySqlDbType.Blob;
-            contentData.Value = model.Content;
+            var contentData = new MySqlParameter
+            {
+                ParameterName = "?content",
+                MySqlDbType = MySqlDbType.Blob,
+                Value = model.Content
+            };
 
             update.CommandText = $"REPLACE INTO `{tableName}` ({string.Join(',', fieldNames)}) VALUES ({string.Join(',', fieldValues)}) ";
 

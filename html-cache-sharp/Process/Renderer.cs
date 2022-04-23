@@ -1,7 +1,9 @@
 ﻿using HtmlCache.Config;
 using HtmlCache.DB;
+using log4net;
 using Newtonsoft.Json;
 using PuppeteerSharp;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -11,6 +13,8 @@ namespace HtmlCache.Process
 {
     internal class Renderer
     {
+        private static readonly ILog log = LogManager.GetLogger(typeof(Renderer));
+
         public int Passed { get; internal set; }
         public int Total { get; internal set; }
 
@@ -60,16 +64,18 @@ namespace HtmlCache.Process
                 groupedUrlSet[urlPageType].Add(url);
             });
 
-            Console.WriteLine(">> Detected url groups:");
+            var detectedUrls = new Dictionary<string, int>();
             foreach (var groupedUrl in groupedUrlSet)
             {
                 var urlType = groupedUrl.Key;
                 var urlList = groupedUrl.Value;
 
-                Console.WriteLine($">>>> {urlType}: {urlList.Count} urls");
+                detectedUrls[urlType] = urlList.Count;
             }
 
-            Console.WriteLine(">> Start collect cache for urls by detected groups");
+            log.InfoFormat("Detected url groups:\n{0}", detectedUrls);
+
+            log.Info("Start collect cache for urls by detected groups");
 
             TimeSpan totalTime = new();
 
@@ -78,7 +84,7 @@ namespace HtmlCache.Process
                 var pageType = groupedUrl.Key;
                 var urlList = groupedUrl.Value;
 
-                Console.WriteLine($">> Collect cache for type `{pageType}`:");
+                log.Info($"Collect cache for type `{pageType}`");
 
                 totalTime += await IterateUrlsAsync(urlList, totalTime);
             }
@@ -105,18 +111,26 @@ namespace HtmlCache.Process
 
             if (multithread)
             {
-                Console.WriteLine($">> Start iterating over url list in parallel mode");
+                log.Info("Start iterating over url list in parallel mode");
 
                 var timeStart = DateTime.Now;
 
+                ConcurrentDictionary<int, Page> pageBag = new();
+
                 await Parallel.ForEachAsync(urlSet, async (url, state) =>
                 {
-                    using var page = await BrowserLoader.OpenNewPageAsync();
+                    int currentThread = Environment.CurrentManagedThreadId;
+
+                    if (!pageBag.ContainsKey(currentThread))
+                    {
+                        pageBag[currentThread] = await BrowserLoader.OpenNewPageAsync();
+                    }
+
+                    var page = pageBag[currentThread];
 
                     current++;
 
                     int cursor = current;
-                    int currentThread = Environment.CurrentManagedThreadId;
 
                     TimeSpan pageTiming = new();
 
@@ -125,7 +139,7 @@ namespace HtmlCache.Process
                         .Select(pt => pt.Type)
                         .FirstOrDefault("undefined");
 
-                    Console.WriteLine($">> [th#{currentThread}][{cursor} of {totalUrls}][{currentPageType}] Process page {url.Uri}...");
+                    log.Info($"[{cursor} of {totalUrls}][{currentPageType}] Process page {url.Uri}");
 
                     try
                     {
@@ -135,17 +149,20 @@ namespace HtmlCache.Process
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[th#{currentThread}][!] Error occured: " + ex.ToString());
+                        log.Error($"[{cursor} of {totalUrls}] Error occured: " + ex.ToString());
                     }
 
-                    Console.WriteLine($">>>> [th#{currentThread}][{cursor} of {totalUrls}] Render end in {pageTiming} / {totalTime}{(offsetTime is null ? "" : $" ({offsetTime + totalTime})")}");
-
-                    await page.CloseAsync();
+                    log.Info($"[{cursor} of {totalUrls}] Render end in {pageTiming} / {totalTime}{(offsetTime is null ? "" : $" ({offsetTime + totalTime})")}");
                 });
+
+                foreach (var page in pageBag)
+                {
+                    await page.Value.CloseAsync();
+                }
             }
             else
             {
-                Console.WriteLine(">> Start iterating over url list in sequential mode");
+                log.Info("Start iterating over url list in sequential mode");
 
                 var page = await BrowserLoader.OpenNewPageAsync();
 
@@ -160,7 +177,7 @@ namespace HtmlCache.Process
                         .Select(pt => pt.Type)
                         .FirstOrDefault("undefined");
 
-                    Console.WriteLine($">> [{current} of {totalUrls}][{currentPageType}] Process page {url.Uri}...");
+                    log.Info($"[{current} of {totalUrls}][{currentPageType}] Process page {url.Uri}...");
 
                     try
                     {
@@ -170,16 +187,16 @@ namespace HtmlCache.Process
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine("[!] Error occured: " + ex.ToString());
+                        log.Error($"[{current} of {totalUrls}] Error occured: " + ex.ToString());
                     }
 
-                    Console.WriteLine($">>>> Render end in {pageTiming} / {totalTime}{(offsetTime is null ? "" : $" ({offsetTime + totalTime})")}");
+                    log.Info($"[{current} of {totalUrls}] Render end in {pageTiming} / {totalTime}{(offsetTime is null ? "" : $" ({offsetTime + totalTime})")}");
                 }
 
                 await page.CloseAsync();
             }
 
-            return (TimeSpan)(offsetTime is null ? totalTime : offsetTime + totalTime);
+            return totalTime;
         }
 
         internal async Task<TimeSpan> CollectCacheAsync(Url url, string pageType = "undefined", Page? page = null, Browser? browser = null)
@@ -200,17 +217,17 @@ namespace HtmlCache.Process
 
             string urlHash = Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(url.Uri))).ToLower();
 
-            Console.WriteLine($">>>> Page url hash: {urlHash}");
+            log.Info($"Page url hash: {urlHash}");
 
             var render = Db.FindByHash(urlHash);
 
             if (render != null)
             {
-                Console.WriteLine($">>>> Found render data: #{render.ID} - {render.RenderDate}");
+                log.Info($"Found render data: #{render.ID} - {render.RenderDate}");
 
                 if (render.LastmodDate == url.LastMod)
                 {
-                    Console.WriteLine($">>>> Render lastmod date not changed - SKIP");
+                    log.Warn($"Render lastmod date not changed - SKIP");
 
                     Passed++;
 
@@ -237,7 +254,7 @@ namespace HtmlCache.Process
 
                 if (pageContent.Contains("<meta name=\"robots\" content=\"noindex\">"))
                 {
-                    Console.WriteLine(">>>> NOINDEX meta attribute detected - SKIP");
+                    log.Warn("NOINDEX meta attribute detected - SKIP");
 
                     Passed++;
 
@@ -246,14 +263,14 @@ namespace HtmlCache.Process
 
                 if (verbose)
                 {
-                    Console.WriteLine($">>>> Wait for opened...");
+                    log.Debug("Wait for opened");
                 }
 
                 await page.WaitForFunctionAsync("(pageType) => AppCore.Pages.of(pageType).isOpened()", pageType);
 
                 if (verbose)
                 {
-                    Console.WriteLine($">>>> Wait for loaded...");
+                    log.Debug("Wait for loaded");
                 }
 
                 await page.WaitForFunctionAsync("(pageType) => AppCore.Pages.of(pageType).isLoaded()", pageType);
@@ -269,11 +286,11 @@ namespace HtmlCache.Process
 
                 string contentHash = Convert.ToHexString(MD5.HashData(content)).ToLower();
 
-                Console.WriteLine($">>>> Computed content hash: {contentHash}");
+                log.Info($"Computed content hash: {contentHash}");
 
                 if (render != null && render.ContentHash == contentHash)
                 {
-                    Console.WriteLine(">>>> Render content hash not changed - SKIP");
+                    log.Warn("Render content hash not changed - SKIP");
 
                     Passed++;
 
@@ -304,9 +321,9 @@ namespace HtmlCache.Process
             {
                 var pageState = await page.EvaluateFunctionAsync("(pageType) => AppCore.Pages.of(pageType).getState()", pageType);
 
-                Console.WriteLine($">>>> Fail. Reason: {e.Message}");
-                Console.WriteLine($">>>> State: {JsonConvert.SerializeObject(pageState, Formatting.Indented)}");
-                Console.WriteLine(">>>> Saving fail screen...");
+                log.Error($"Fail. Reason: {e.Message}");
+                log.Error($"State: {JsonConvert.SerializeObject(pageState, Formatting.Indented)}");
+                log.Error("Saving fail screen");
 
                 try
                 {
@@ -322,11 +339,11 @@ namespace HtmlCache.Process
                         FullPage = true,
                     });
 
-                    Console.WriteLine($">>>> Fail screen saved to `{failScreenPath}`");
+                    log.Error($"Fail screen saved to `{failScreenPath}`");
                 }
                 catch (Exception)
                 {
-                    Console.WriteLine(">> Error occured while capturing screenshot");
+                    log.Error("Error occured while capturing screenshot");
 
                     throw;
                 }

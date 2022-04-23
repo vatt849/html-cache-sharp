@@ -1,10 +1,13 @@
 ﻿using HtmlCache.Config;
+using log4net;
 using System.Xml.Linq;
 
 namespace HtmlCache.Process
 {
     internal static class Sitemap
     {
+        private static readonly ILog log = LogManager.GetLogger(typeof(Sitemap));
+
         public static List<Url> LoadUrls()
         {
             AppConfig config = AppConfig.Instance;
@@ -13,7 +16,7 @@ namespace HtmlCache.Process
 
             if (config.Verbose)
             {
-                Console.WriteLine($">> Loading sitemap from url: {sitemapURL}");
+                log.Debug($"Loading sitemap from url: {sitemapURL}");
             }
 
             var ns = XNamespace.Get("http://www.sitemaps.org/schemas/sitemap/0.9");
@@ -32,7 +35,7 @@ namespace HtmlCache.Process
 
             if (urlset is null)
             {
-                Console.WriteLine($">> Sitemap not loaded properly (urlset not found or empty)");
+                log.Info("Sitemap not loaded properly (urlset not found or empty)");
 
                 return ret;
             }

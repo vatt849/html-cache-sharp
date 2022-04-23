@@ -1,4 +1,5 @@
 ﻿using HtmlCache.Config;
+using log4net;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
@@ -7,6 +8,8 @@ namespace HtmlCache.DB
 {
     internal class Mongo : IDB
     {
+        private static readonly ILog log = LogManager.GetLogger(typeof(Mongo));
+
         internal MongoClient dbClient;
         internal IMongoDatabase db;
         internal IMongoCollection<BsonDocument> collection;
@@ -43,17 +46,13 @@ namespace HtmlCache.DB
 
             collection = db.GetCollection<BsonDocument>(collectionName);
 
-            Console.WriteLine($">> Connect to MongoDB successfully initiated [{maskedConnStr}]");
+            log.Info($"Connect to MongoDB successfully initiated [{maskedConnStr}]");
 
             if (verbose)
             {
-                Console.WriteLine();
-
                 var command = new BsonDocument { { "dbstats", 1 } };
                 var result = db.RunCommand<BsonDocument>(command);
-                Console.WriteLine("DB stats:\n" + result.ToJson(new() { Indent = true }));
-
-                Console.WriteLine();
+                log.Debug("DB stats:\n" + result.ToJson(new() { Indent = true }));
             }
         }
 

@@ -1,17 +1,18 @@
 ﻿using HtmlCache.Config;
+using log4net;
 using StackExchange.Redis;
 
 namespace HtmlCache.DB
 {
     internal class Redis : IDB
     {
+        private static readonly ILog log = LogManager.GetLogger(typeof(Redis));
+
         internal ConnectionMultiplexer dbClient;
         internal IDatabase db;
 
         public Redis()
         {
-            var verbose = AppConfig.Instance.Verbose;
-
             var dbConfig = AppConfig.Instance.Db;
 
             string connStr = $"{dbConfig.Host}:{dbConfig.Port}";
@@ -25,7 +26,7 @@ namespace HtmlCache.DB
 
             var pong = db.Ping();
 
-            Console.WriteLine($">> Connect to Redis successfully initiated [{connStr}:{dbConfig.Db} - ping: {pong.Milliseconds}ms]");
+            log.Info($"Connect to Redis successfully initiated [{connStr}:{dbConfig.Db} - ping: {pong.Milliseconds}ms]");
         }
 
         public RenderModel? FindByHash(string hash)

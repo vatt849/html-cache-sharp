@@ -1,4 +1,5 @@
 ﻿using HtmlCache.Config;
+using log4net;
 using Newtonsoft.Json.Linq;
 using PuppeteerSharp;
 using System.Net;
@@ -7,6 +8,7 @@ namespace HtmlCache.Process
 {
     internal static class BrowserLoader
     {
+        private static readonly ILog log = LogManager.GetLogger(typeof(BrowserLoader));
         public async static Task CheckRevisionAsync()
         {
             string? manualRevision = AppConfig.Instance.BrowserRevision;
@@ -15,23 +17,23 @@ namespace HtmlCache.Process
 
             if (manualRevision == null)
             {
-                Console.WriteLine(">> Retrieving info about actual revision of Chrome...");
+                log.Info("Retrieving info about actual revision of Chrome...");
 
                 actualRevision = await GetActualRevisionAsync();
                 //string actualRevision = BrowserFetcher.DefaultChromiumRevision;
 
-                Console.WriteLine($">> Actual Chrome revision: {actualRevision}");
+                log.Info($"Actual Chrome revision: {actualRevision}");
             }
             else
             {
                 actualRevision = manualRevision;
 
-                Console.WriteLine($">> Chrome revision set manually to {actualRevision}");
+                log.Info($"Chrome revision set manually to {actualRevision}");
             }
 
             var browserFetcher = new BrowserFetcher();
 
-            Console.WriteLine(">> Check installed revision...");
+            log.Info("Check installed revision");
 
             var localRevision = browserFetcher.RevisionInfo(actualRevision);
 
@@ -39,7 +41,7 @@ namespace HtmlCache.Process
             {
                 AppConfig.Instance.BrowserRevision = localRevision.Revision;
 
-                Console.WriteLine(">> Local revision is in actual version");
+                log.Info("Local revision is in actual version");
                 return;
             }
 
@@ -47,19 +49,19 @@ namespace HtmlCache.Process
 
             if (localRevisions.Any())
             {
-                Console.WriteLine(">> Local revision is not in actual version - need to remove old revisions and download new one");
+                log.Info("Local revision is not in actual version - need to remove old revisions and download new one");
 
                 foreach (string revision in browserFetcher.LocalRevisions())
                 {
-                    //browserFetcher.Remove(revision);
+                    browserFetcher.Remove(revision);
                 }
             }
             else
             {
-                Console.WriteLine(">> Installed revisions of Chrome not found - need to download new one");
+                log.Info("Installed revisions of Chrome not found - need to download new one");
             }
 
-            Console.WriteLine(">> Start downloading Chrome...");
+            log.Info("Start downloading Chrome");
 
             bool canDownload = await browserFetcher.CanDownloadAsync(actualRevision);
 
@@ -100,7 +102,8 @@ namespace HtmlCache.Process
 
             AppConfig.Instance.BrowserRevision = localRevision.Revision;
 
-            Console.WriteLine("\n>> Chrome downloading complete!");
+            Console.WriteLine();
+            log.Info("Chrome downloading complete!");
         }
 
         public static async Task<Dictionary<Platform, string>> GetActualRevisionsListAsync()
@@ -190,7 +193,15 @@ namespace HtmlCache.Process
 
             if (AppConfig.Instance.Verbose)
             {
-                page.Load += new EventHandler((sender, e) => Console.WriteLine($">>>> {((Page)sender).Url} loaded!"));
+                page.Load += new EventHandler((sender, e) =>
+                {
+                    var page = (Page?)sender;
+
+                    if (page != null)
+                    {
+                        log.Debug($"{page.Url} loaded!");
+                    }
+                });
             }
 
             return page;
