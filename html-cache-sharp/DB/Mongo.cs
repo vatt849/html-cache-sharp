@@ -8,7 +8,7 @@ namespace HtmlCache.DB
 {
     internal class Mongo : IDB
     {
-        private static readonly ILog log = LogManager.GetLogger(typeof(Mongo));
+        private static readonly ILog log = LogManager.GetLogger("MongoDB");
 
         internal MongoClient dbClient;
         internal IMongoDatabase db;

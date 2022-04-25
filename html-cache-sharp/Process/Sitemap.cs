@@ -6,7 +6,7 @@ namespace HtmlCache.Process
 {
     internal static class Sitemap
     {
-        private static readonly ILog log = LogManager.GetLogger(typeof(Sitemap));
+        private static readonly ILog log = LogManager.GetLogger("Sitemap");
 
         public static List<Url> LoadUrls()
         {

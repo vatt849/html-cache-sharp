@@ -11,7 +11,7 @@ using System.Text;
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 XmlConfigurator.Configure(new FileInfo("log4net.config"));
-ILog log = LogManager.GetLogger(typeof(Program));
+ILog log = LogManager.GetLogger("Main");
 
 Console.CancelKeyPress += async (sender, e) =>
 {

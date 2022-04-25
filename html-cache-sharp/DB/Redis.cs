@@ -6,7 +6,7 @@ namespace HtmlCache.DB
 {
     internal class Redis : IDB
     {
-        private static readonly ILog log = LogManager.GetLogger(typeof(Redis));
+        private static readonly ILog log = LogManager.GetLogger("REDIS");
 
         internal ConnectionMultiplexer dbClient;
         internal IDatabase db;

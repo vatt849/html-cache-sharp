@@ -6,7 +6,7 @@ namespace HtmlCache.DB
 {
     internal class Mysql : IDB
     {
-        private static readonly ILog log = LogManager.GetLogger(typeof(Mysql));
+        private static readonly ILog log = LogManager.GetLogger("MySQL");
 
         internal MySqlConnection dbClient;
         internal string tableName;
