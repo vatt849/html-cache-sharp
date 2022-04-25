@@ -36,6 +36,9 @@ html-cache-sharp -r 972766
 ```bash
 html-cache-sharp --multithread
 html-cache-sharp -m
+#with max threads limiter:
+html-cache-sharp -m -max-threads 8
+html-cache-sharp -m -t 8
 ```
 
 ## Config examples
