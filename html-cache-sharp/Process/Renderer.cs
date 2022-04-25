@@ -3,7 +3,6 @@ using HtmlCache.DB;
 using log4net;
 using Newtonsoft.Json;
 using PuppeteerSharp;
-using System.Collections.Concurrent;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -13,7 +12,7 @@ namespace HtmlCache.Process
 {
     internal class Renderer
     {
-        private static readonly ILog log = LogManager.GetLogger(typeof(Renderer));
+        private static readonly ILog log = LogManager.GetLogger("Renderer");
 
         public int Passed { get; internal set; }
         public int Total { get; internal set; }
@@ -25,7 +24,7 @@ namespace HtmlCache.Process
         {
             string dbDriver = AppConfig.Instance.DbDriver;
 
-            Db = dbDriver switch
+            Db = dbDriver.ToLower() switch
             {
                 "redis" => new Redis(),
                 "mongodb" => new Mongo(),
@@ -39,6 +38,8 @@ namespace HtmlCache.Process
 
         public async Task CollectAsync()
         {
+            _ = await BrowserLoader.OpenNewPageAsync(); //open default page
+
             await IterateUrlsAsync();
         }
 
@@ -73,9 +74,11 @@ namespace HtmlCache.Process
                 detectedUrls[urlType] = urlList.Count;
             }
 
-            log.InfoFormat("Detected url groups:\n{0}", detectedUrls);
+            log.Info($"Detected url groups:\n{JsonConvert.SerializeObject(detectedUrls, Formatting.Indented)}");
 
             log.Info("Start collect cache for urls by detected groups");
+
+            _ = await BrowserLoader.OpenNewPageAsync(); //open default page
 
             TimeSpan totalTime = new();
 
@@ -83,6 +86,12 @@ namespace HtmlCache.Process
             {
                 var pageType = groupedUrl.Key;
                 var urlList = groupedUrl.Value;
+
+                if (urlList.Count == 0)
+                {
+                    log.Warn($"Url list for type `{pageType}` is empty - SKIP");
+                    continue;
+                }
 
                 log.Info($"Collect cache for type `{pageType}`");
 
@@ -94,8 +103,6 @@ namespace HtmlCache.Process
         {
             bool multithread = AppConfig.Instance.Multithread;
             bool verbose = AppConfig.Instance.Verbose;
-
-            _ = await BrowserLoader.OpenNewPageAsync(); //open default page
 
             if (urlSet == null)
             {
@@ -115,19 +122,29 @@ namespace HtmlCache.Process
 
                 var timeStart = DateTime.Now;
 
-                ConcurrentDictionary<int, Page> pageBag = new();
+                int maxThreads = AppConfig.Instance.MaxThreads;
 
-                await Parallel.ForEachAsync(urlSet, async (url, state) =>
+                if (maxThreads <= 0 || maxThreads > Environment.ProcessorCount)
                 {
-                    int currentThread = Environment.CurrentManagedThreadId;
+                    maxThreads = Environment.ProcessorCount;
+                }
 
-                    if (!pageBag.ContainsKey(currentThread))
-                    {
-                        pageBag[currentThread] = await BrowserLoader.OpenNewPageAsync();
-                    }
+                log.Info($"Maximum degree of parallelizm (max threads count) is {maxThreads}");
 
-                    var page = pageBag[currentThread];
+                Queue<Page> pageQueue = new();
 
+                for (int i = 0; i < maxThreads * 2; i++)
+                {
+                    pageQueue.Enqueue(await BrowserLoader.OpenNewPageAsync());
+                }
+
+                ParallelOptions pOpts = new()
+                {
+                    MaxDegreeOfParallelism = maxThreads
+                };
+
+                await Parallel.ForEachAsync(urlSet, pOpts, async (url, state) =>
+                {
                     current++;
 
                     int cursor = current;
@@ -139,32 +156,48 @@ namespace HtmlCache.Process
                         .Select(pt => pt.Type)
                         .FirstOrDefault("undefined");
 
-                    log.Info($"[{cursor} of {totalUrls}][{currentPageType}] Process page {url.Uri}");
+                    log.Info($"[{cursor} of {totalUrls}: {currentPageType}] Process page {url.Uri}");
+
+                    Page page = pageQueue.Dequeue();
 
                     try
                     {
-                        pageTiming = await CollectCacheAsync(url, currentPageType, page);
+                        pageTiming = await CollectCacheAsync(
+                            url: url,
+                            pageType: currentPageType,
+                            page: page,
+                            cursor: cursor,
+                            totalUrls: totalUrls
+                        );
 
                         totalTime = DateTime.Now - timeStart;
                     }
                     catch (Exception ex)
                     {
-                        log.Error($"[{cursor} of {totalUrls}] Error occured: " + ex.ToString());
+                        log.Error($"[{cursor} of {totalUrls}: {currentPageType}] Error occured: " + ex.ToString());
+                    }
+                    finally
+                    {
+                        await page.GoToAsync("about:blank");
+
+                        pageQueue.Enqueue(page);
                     }
 
-                    log.Info($"[{cursor} of {totalUrls}] Render end in {pageTiming} / {totalTime}{(offsetTime is null ? "" : $" ({offsetTime + totalTime})")}");
+                    log.Info($"[{cursor} of {totalUrls}: {currentPageType}] Render end in {pageTiming} / {totalTime}{(offsetTime is null ? "" : $" ({offsetTime + totalTime})")}");
                 });
 
-                foreach (var page in pageBag)
+                foreach (var page in pageQueue)
                 {
-                    await page.Value.CloseAsync();
+                    await page.CloseAsync();
                 }
+
+                pageQueue.Clear();
             }
             else
             {
                 log.Info("Start iterating over url list in sequential mode");
 
-                var page = await BrowserLoader.OpenNewPageAsync();
+                using var page = await BrowserLoader.OpenNewPageAsync();
 
                 foreach (var url in urlSet)
                 {
@@ -177,20 +210,26 @@ namespace HtmlCache.Process
                         .Select(pt => pt.Type)
                         .FirstOrDefault("undefined");
 
-                    log.Info($"[{current} of {totalUrls}][{currentPageType}] Process page {url.Uri}...");
+                    log.Info($"[{current} of {totalUrls}: {currentPageType}] Process page {url.Uri}...");
 
                     try
                     {
-                        pageTiming = await CollectCacheAsync(url, currentPageType, page);
+                        pageTiming = await CollectCacheAsync(
+                            url: url,
+                            pageType: currentPageType,
+                            page: page,
+                            cursor: current,
+                            totalUrls: totalUrls
+                        );
 
                         totalTime += pageTiming;
                     }
                     catch (Exception ex)
                     {
-                        log.Error($"[{current} of {totalUrls}] Error occured: " + ex.ToString());
+                        log.Error($"[{current} of {totalUrls}: {currentPageType}] Error occured: " + ex.ToString());
                     }
 
-                    log.Info($"[{current} of {totalUrls}] Render end in {pageTiming} / {totalTime}{(offsetTime is null ? "" : $" ({offsetTime + totalTime})")}");
+                    log.Info($"[{current} of {totalUrls}: {currentPageType}] Render end in {pageTiming} / {totalTime}{(offsetTime is null ? "" : $" ({offsetTime + totalTime})")}");
                 }
 
                 await page.CloseAsync();
@@ -199,8 +238,13 @@ namespace HtmlCache.Process
             return totalTime;
         }
 
-        internal async Task<TimeSpan> CollectCacheAsync(Url url, string pageType = "undefined", Page? page = null, Browser? browser = null)
+        internal async Task<TimeSpan> CollectCacheAsync(Url url, string pageType = "undefined", Page? page = null, Browser? browser = null, int cursor = 0, int? totalUrls = null)
         {
+            if (totalUrls is null)
+            {
+                totalUrls = Total;
+            }
+
             bool verbose = AppConfig.Instance.Verbose;
 
             DateTime pageTimeStart = DateTime.Now;
@@ -217,17 +261,17 @@ namespace HtmlCache.Process
 
             string urlHash = Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(url.Uri))).ToLower();
 
-            log.Info($"Page url hash: {urlHash}");
+            log.Info($"[{cursor} of {totalUrls}: {pageType}] Page url hash: {urlHash}");
 
             var render = Db.FindByHash(urlHash);
 
             if (render != null)
             {
-                log.Info($"Found render data: #{render.ID} - {render.RenderDate}");
+                log.Info($"[{cursor} of {totalUrls}: {pageType}] Found render data: #{render.ID} - {render.RenderDate}");
 
                 if (render.LastmodDate == url.LastMod)
                 {
-                    log.Warn($"Render lastmod date not changed - SKIP");
+                    log.Warn($"[{cursor} of {totalUrls}: {pageType}] Render lastmod date not changed - SKIP");
 
                     Passed++;
 
@@ -254,7 +298,7 @@ namespace HtmlCache.Process
 
                 if (pageContent.Contains("<meta name=\"robots\" content=\"noindex\">"))
                 {
-                    log.Warn("NOINDEX meta attribute detected - SKIP");
+                    log.Warn($"[{cursor} of {totalUrls}: {pageType}] NOINDEX meta attribute detected - SKIP");
 
                     Passed++;
 
@@ -263,14 +307,14 @@ namespace HtmlCache.Process
 
                 if (verbose)
                 {
-                    log.Debug("Wait for opened");
+                    log.Debug($"[{cursor} of {totalUrls}: {pageType}] Wait for opened");
                 }
 
                 await page.WaitForFunctionAsync("(pageType) => AppCore.Pages.of(pageType).isOpened()", pageType);
 
                 if (verbose)
                 {
-                    log.Debug("Wait for loaded");
+                    log.Debug($"[{cursor} of {totalUrls}: {pageType}] Wait for loaded");
                 }
 
                 await page.WaitForFunctionAsync("(pageType) => AppCore.Pages.of(pageType).isLoaded()", pageType);
@@ -286,11 +330,11 @@ namespace HtmlCache.Process
 
                 string contentHash = Convert.ToHexString(MD5.HashData(content)).ToLower();
 
-                log.Info($"Computed content hash: {contentHash}");
+                log.Info($"[{cursor} of {totalUrls}: {pageType}] Computed content hash: {contentHash}");
 
                 if (render != null && render.ContentHash == contentHash)
                 {
-                    log.Warn("Render content hash not changed - SKIP");
+                    log.Warn($"[{cursor} of {totalUrls}: {pageType}] Render content hash not changed - SKIP");
 
                     Passed++;
 
@@ -321,9 +365,9 @@ namespace HtmlCache.Process
             {
                 var pageState = await page.EvaluateFunctionAsync("(pageType) => AppCore.Pages.of(pageType).getState()", pageType);
 
-                log.Error($"Fail. Reason: {e.Message}");
-                log.Error($"State: {JsonConvert.SerializeObject(pageState, Formatting.Indented)}");
-                log.Error("Saving fail screen");
+                log.Error($"[{cursor} of {totalUrls}: {pageType}] Fail. Reason: {e.Message}");
+                log.Error($"[{cursor} of {totalUrls}: {pageType}] State: {JsonConvert.SerializeObject(pageState, Formatting.Indented)}");
+                log.Error($"[{cursor} of {totalUrls}: {pageType}] Saving fail screen");
 
                 try
                 {
@@ -339,11 +383,11 @@ namespace HtmlCache.Process
                         FullPage = true,
                     });
 
-                    log.Error($"Fail screen saved to `{failScreenPath}`");
+                    log.Error($"[{cursor} of {totalUrls}: {pageType}] Fail screen saved to `{failScreenPath}`");
                 }
                 catch (Exception)
                 {
-                    log.Error("Error occured while capturing screenshot");
+                    log.Error($"[{cursor} of {totalUrls}: {pageType}] Error occured while capturing screenshot");
 
                     throw;
                 }

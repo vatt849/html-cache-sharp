@@ -61,6 +61,7 @@ return await Parser.Default.ParseArguments<CLOptions>(args)
             AppConfig.Load(configPath);
             AppConfig.Instance.Verbose = opts.Verbose;
             AppConfig.Instance.Multithread = opts.Multithread;
+            AppConfig.Instance.MaxThreads = opts.MaxThreads;
 
             log.Info($"Config parsed successfully ({DateTime.Now - configTimeStart})");
 

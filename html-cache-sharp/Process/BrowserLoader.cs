@@ -8,7 +8,7 @@ namespace HtmlCache.Process
 {
     internal static class BrowserLoader
     {
-        private static readonly ILog log = LogManager.GetLogger(typeof(BrowserLoader));
+        private static readonly ILog log = LogManager.GetLogger("BrowserLoader");
         public async static Task CheckRevisionAsync()
         {
             string? manualRevision = AppConfig.Instance.BrowserRevision;
@@ -193,7 +193,7 @@ namespace HtmlCache.Process
 
             if (AppConfig.Instance.Verbose)
             {
-                page.Load += new EventHandler((sender, e) =>
+                page.Load += (sender, e) =>
                 {
                     var page = (Page?)sender;
 
@@ -201,8 +201,22 @@ namespace HtmlCache.Process
                     {
                         log.Debug($"{page.Url} loaded!");
                     }
-                });
+                };
             }
+
+            await page.SetRequestInterceptionAsync(true);
+            page.Request += (sender, e) =>
+            {
+                string resType = e.Request.ResourceType.ToString();
+                if (resType == "Image" || resType == "Font" || resType == "Img")
+                {
+                    e.Request.AbortAsync();
+                }
+                else
+                {
+                    e.Request.ContinueAsync();
+                }
+            };
 
             return page;
         }
