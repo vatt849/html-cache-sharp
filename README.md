@@ -76,13 +76,13 @@ page_types:
     regex: \.(ru|com)\/?$
 ```
 
-- with Redis:
+- with MySQL:
 
 ```yml
-db_driver: redis
+db_driver: mysql
 db:
     host: localhost
-    port: 6379
+    port: 3306
     user: ""
     passwd: ""
     db: db_name
